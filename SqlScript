@@ -1,0 +1,130 @@
+create database predtestem;
+use predtestem;
+create table stavby(
+	id int primary key auto_increment,
+    nazev varchar(50) not null
+);
+
+create table pozice(
+	id int primary key auto_increment,
+    nazev varchar(50) not null
+);
+
+set foreign_key_checks = 0;
+
+create table delnici(
+	id int primary key auto_increment,
+    stavba_id int not null,
+    pozice_id int not null,
+    foreign key (pozice_id) references pozice(id),
+    foreign key (stavba_id) references stavba(id)
+);
+
+insert into stavby (nazev) values ('Stavba skoly');
+insert into stavby (nazev) values ('Stavba kaufland');
+insert into stavby (nazev) values ('Stavba metra');
+insert into stavby (nazev) values ('Stavba most');
+insert into stavby (nazev) values ('Stavba dum');
+
+insert into pozice (nazev) values ('Zednik');
+insert into pozice (nazev) values ('Manager');
+insert into pozice (nazev) values ('Instalator');
+insert into pozice (nazev) values ('Instruktor');
+insert into pozice (nazev) values ('Testovac');
+
+insert into delnici (stavba_id, pozice_id, jmeno, prijmeni) values (1,1,'Zednik Ivan','Schwartz');
+insert into delnici (stavba_id, pozice_id, jmeno, prijmeni) values (2,2,'Manager Klaus','White');
+insert into delnici (stavba_id, pozice_id, jmeno, prijmeni) values (3,3,'Instalator Stefan','Slepy');
+insert into delnici (stavba_id, pozice_id, jmeno, prijmeni) values (4,4,'Instruktor Fives','Seven');
+insert into delnici (stavba_id, pozice_id, jmeno, prijmeni) values (5,5,'Testovac Kral','Cerveny');
+insert into delnici (stavba_id, pozice_id, jmeno, prijmeni) values (5,5,'Testovac Karel','Cerveny');
+insert into delnici (stavba_id, pozice_id, jmeno, prijmeni) values (2,3,'No','Body');
+
+
+/*
+a) umožní vypsat stavby, dělníky a jejich pozice na stavbě setříděné podle názvu stavby, názvu pozice a příjmení a jména dělníka abecedně
+*/
+create view delniciSerazenePodleStaveb as 
+select stavby.nazev as stavba, delnici.jmeno, delnici.prijmeni, pozice.nazev as pozice
+from delnici inner join stavby on delnici.stavba_id = stavby.id inner join pozice on delnici.pozice_id = pozice.id
+group by stavby.id
+order by delnici.jmeno, delnici.prijmeni, pozice.nazev;
+
+/*
+b) umožní výpis počtu dělníků na jednotlivých pozicích u jednotlivých staveb
+*/
+create view delniciPoctyPodleStaveb as
+select stavby.nazev as stavba, pozice.nazev as pozice ,Count(pozice.id) as pocetDelniku
+from delnici inner join stavby on delnici.stavba_id = stavby.id inner join pozice on delnici.pozice_id = pozice.id
+group by stavby.id, pozice.id;
+
+
+/*
+c) umožní výpis všech změn stavby u dělníků z tabulky "zmeny_delnici"
+*/
+
+
+create table zmeny_delnici(
+	id int primary key auto_increment,
+    delnik_id int not null,
+    stavba_id int not null,
+    pozice_id int not null,
+    jmeno varchar(45),
+    prijmeni varchar(45),
+    zmena varchar(45),
+    check (zmena = "odhod" or zmena = "prichod"),
+    foreign key (delnik_id) references delnici(id),
+    foreign key (stavba_id) references stavby(id),
+    foreign key (pozice_id) references pozice(id)
+);
+
+/*
+triggery 
+a) při odchodu delnika ze stavby (delete), zapíše všechny údaje delnika, název stavby, název pozice, typ změny ("odchod") a aktuální čas do záložní tabulky "zmeny_delnici" 
+b) při příchodu delnika na stavbu (insert), zapíše všechny údaje delnika, název stavby, název pozice, typ změny ("prichod") a aktuální čas do záložní tabulky "zmeny_delnici" 
+*/
+Delimiter $$
+create trigger del_delnici before delete on delnici 
+for each row
+begin
+insert into zmeny_delnici (delnik_id,stavba_id,pozice_id,jmeno,prijmeni,zmena,cas) values (old.id, old.stavba_id,old.pozice_id,old.jmeno,old.prijmeni,'odhod',now());
+end $$
+Delimiter ;
+
+Delimiter $$
+create trigger insert_delnici before insert on delnici 
+for each row 
+begin
+insert into zmeny_delnici (delnik_id,stavba_id,pozice_id,jmeno,prijmeni,zmena,cas) values (new.id, new.stavba_id, new.pozice_id, new.jmeno, new.prijmeni,'prichod',now());
+end $$
+Delimiter ;
+
+drop trigger del_delnici;
+drop trigger insert_delnici;
+
+select * from delnici;
+select * from zmeny_delnici;
+
+delete from delnici
+where id = 2;
+
+select * from delniciSerazenePodleStaveb;
+select * from delniciPoctyPodleStaveb;
+
+
+/*
+Vlozeni delnika na stavbu 
+
+*/
+DELIMITER &&  
+CREATE PROCEDURE Add_Delnik (in Jmeno varchar(45), in Prijmeni varchar(45), in Pozice varchar(45), in Stavba varchar(50))   
+BEGIN
+	select id into @poziceId from pozice 
+    where pozice.nazev = Pozice;
+    select id into @stavbaId from stavby 
+    where stavby.nazev = Stavba;
+    insert into delnici (stavba_id,pozice_id,jmeno,prijmeni) values (@stavbaId,@poziceId,Jmeno,Prijmeni);
+END &&  
+DELIMITER ;  
+
+call Add_Delnik('Vanja','Cerveny','Instalator',"Stavba metra");
